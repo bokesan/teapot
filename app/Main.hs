@@ -8,6 +8,9 @@ import Data.Time.Clock
 import Data.IORef
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Text
+import Text.Blaze.Html5 as H hiding (main)
+import qualified Text.Blaze.Html5.Attributes as A
+import Text.Blaze.Html.Renderer.Utf8
 
 import qualified Pot
 
@@ -29,7 +32,7 @@ handleGet, handlePut, handlePost :: IORef Pot.State -> [Text] -> (Response -> IO
 handleGet ref _ answer = do
   now <- getCurrentTime
   resp <- atomicModifyIORef' ref (getState now)
-  answer (page (BS.pack resp))
+  answer (Main.html resp)
 
 handlePut ref [n] answer = do
   success <- atomicModifyIORef' ref (serveCups (read (unpack n)))
@@ -57,14 +60,14 @@ handlePost ref [n1, tea, n2] answer = do
 handlePost _ _ answer = answer notFound
 
 
-getState :: UTCTime -> Pot.State -> (Pot.State, String)
+getState :: UTCTime -> Pot.State -> (Pot.State, Html)
 getState now st = let st' = Pot.getState now st in
-                  (st', Pot.showState (Pot.pot st') now)
+                  (st', Pot.toHtml now (Pot.pot st'))
 
 plain :: BS.ByteString -> Response
-plain text = responseLBS status200
+plain txt = responseLBS status200
     [("Content-Type", "text/plain")]
-    (BS.concat [text, "\n"])
+    (BS.concat [txt, "\n"])
 
 notFound :: Response
 notFound = responseLBS
@@ -75,15 +78,17 @@ notFound = responseLBS
 ok :: Response
 ok = plain "OK"
 
-page :: BS.ByteString -> Response
-page text = responseLBS
-              status200
-              [("Content-type", "text/html")]
-              (BS.concat ["<!DOCTYPE html>\n<html><head><title>Tea</title>",
-                          "<meta http-equiv='refresh' content='10'>",
-                          "<meta charset='UTF-8'>",
-                          "</title></head><body><h1>Chris' Teapot</h1><p>",
-                          text,
-                          "</p>\n<hr><p align='center'><i>Served by TeaPot 0.1</i></p>",
-                          "</body></html>\n"])
+html :: H.Html -> Response
+html content = responseLBS status200 [("Content-type", "text/html")] (renderHtml doc)
+  where
+    doc = docTypeHtml $ do
+      H.head $ do
+        H.title "Tea"
+        meta ! A.charset "UTF-8"
+        meta ! A.httpEquiv "refresh" ! A.content (H.toValue (10::Integer))
+      body $ do
+        h1 "Chris' Teapot"
+        p content
+        hr
+        p $ i "Served by TeaPot 0.1"
             

@@ -1,6 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Pot where
 
 import Data.Time.Clock
+import Text.Blaze.Html5 as H
+
 
 data Variety = Tea { name :: String, steepingTime :: !Int }
              deriving (Eq, Ord, Show)
@@ -18,22 +21,39 @@ data PotState = Empty
 clean :: State
 clean = State{ pot = Empty, cupsServed = 0 }
 
-showState :: PotState -> UTCTime -> String
-showState Empty _ = "The teapot is empty."
-showState (Steeping tea_ start _) t =
-  "Steeping ...<br>Tea: " ++ name tea_ ++ "<br>Time left: " ++ show sec ++ " seconds"
-  where
-     sec :: Integer
-     sec = truncate (fromIntegral (steepingTime tea_) - diffUTCTime t start)
-showState (Available tea_ start amountLeft) t =
-  "Tea: " ++ name tea_ ++ "<br>" ++
-  "Cups left: " ++ show amountLeft ++ -- ++ replicate amountLeft '☕' ++ "<br>" ++
-  "<br>Brewed " ++ show minutes ++ units
-  where
+toHtml :: UTCTime -> PotState -> Html
+
+toHtml _ Empty = p "The teapot is empty."
+
+toHtml now (Steeping tea_ since_ _) =
+  let sec :: Integer
+      sec = truncate (fromIntegral (steepingTime tea_) - diffUTCTime now since_)
+  in
+  p $ do "Steeping..."
+         br
+         "Tea: "
+         string (name tea_)
+         br
+         "Time left: "
+         H.toHtml sec
+         " seconds"
+
+toHtml now (Available tea_ since_ cups_) =
+  let
     minutes :: Integer
-    minutes = truncate (diffUTCTime t start / 60)
+    minutes = truncate (diffUTCTime now since_ / 60)
     units | minutes == 1 = " minute ago"
           | otherwise    = " minutes ago"
+  in
+  p $ do "Tea: "
+         string (name tea_)
+         br
+         "Cups left: "
+         H.toHtml cups_
+         br
+         "Brewed "
+         H.toHtml minutes
+         units
 
 cPOT_CAPACITY :: Int
 cPOT_CAPACITY = 6

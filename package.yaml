@@ -27,6 +27,7 @@ dependencies:
 - warp
 - bytestring
 - text
+- blaze-html
 
 library:
   source-dirs: src
