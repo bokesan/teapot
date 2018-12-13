@@ -13,7 +13,7 @@ import qualified Pot
 
 main :: IO ()
 main = do
-    state <- newIORef Pot.Empty
+    state <- newIORef Pot.clean
     run 8090 (app' state)
 
 app' :: IORef Pot.State -> Application
@@ -32,21 +32,34 @@ handleGet ref _ answer = do
   answer (page (BS.pack resp))
 
 handlePut ref [n] answer = do
-  _ <- atomicModifyIORef' ref (\st -> (Pot.setCups (read (unpack n)) st, ()))
-  answer ok
+  success <- atomicModifyIORef' ref (serveCups (read (unpack n)))
+  answer (if success then ok else notFound)
 handlePut _ _ answer = answer notFound
 
-handlePost ref [n, tea] answer = do
+serveCups :: Int -> Pot.State -> (Pot.State, Bool)
+serveCups cups = maybeToPair $ Pot.serve cups
+
+brew :: Int -> String -> Int -> UTCTime -> Pot.State -> (Pot.State, Bool)
+brew cups tea minutes now =
+  maybeToPair $ Pot.startBrewing (Pot.Tea tea (minutes * 60 - 20)) cups now
+
+maybeToPair :: (a -> Maybe a) -> a -> (a, Bool)
+maybeToPair f x = case f x of
+                    Nothing -> (x, False)
+                    Just x' -> (x', True)
+
+handlePost ref [n1, tea, n2] answer = do
+  let cups = read (unpack n1)
+  let minutes = read (unpack n2)
   now <- getCurrentTime
-  atomicWriteIORef ref (Pot.startBrewing (Pot.Tea (unpack tea) (60 * read (unpack n) - 20)) now)
-  answer (plain "Sterted steeping ...")
+  success <- atomicModifyIORef ref (brew cups (unpack tea) minutes now)
+  answer (if success then plain "Started steeping..." else notFound)
 handlePost _ _ answer = answer notFound
 
 
 getState :: UTCTime -> Pot.State -> (Pot.State, String)
-getState now st = case Pot.checkState st now of
-                    Nothing  -> (st, Pot.showState st now)
-                    Just st' -> (st', Pot.showState st' now)
+getState now st = let st' = Pot.getState now st in
+                  (st', Pot.showState (Pot.pot st') now)
 
 plain :: BS.ByteString -> Response
 plain text = responseLBS status200
